@@ -82,4 +82,8 @@ public abstract class AnalyzedRelationVisitor<C, R> {
     public R visitView(AnalyzedView analyzedView, C context) {
         return analyzedView.relation().accept(this, context);
     }
+
+    public R visitSelection(Selection selection, C context) {
+        return visitAnalyzedRelation(selection, context);
+    }
 }

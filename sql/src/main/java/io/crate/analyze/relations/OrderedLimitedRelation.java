@@ -25,7 +25,6 @@ package io.crate.analyze.relations;
 import io.crate.analyze.HavingClause;
 import io.crate.analyze.OrderBy;
 import io.crate.analyze.QuerySpec;
-import io.crate.analyze.WhereClause;
 import io.crate.exceptions.ColumnUnknownException;
 import io.crate.expression.symbol.Field;
 import io.crate.expression.symbol.Symbol;
@@ -115,11 +114,6 @@ public class OrderedLimitedRelation implements QueriedRelation {
     @Override
     public List<Symbol> outputs() {
         return childRelation.outputs();
-    }
-
-    @Override
-    public WhereClause where() {
-        return WhereClause.MATCH_ALL;
     }
 
     @Override

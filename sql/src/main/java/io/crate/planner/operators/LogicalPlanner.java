@@ -64,7 +64,6 @@ import io.crate.planner.TableStats;
 import io.crate.planner.WhereClauseOptimizer;
 import io.crate.planner.consumer.FetchMode;
 import io.crate.planner.consumer.InsertFromSubQueryPlanner;
-import io.crate.planner.consumer.OptimizingRewriter;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -85,7 +84,6 @@ public class LogicalPlanner {
 
     public static final int NO_LIMIT = -1;
 
-    private final OptimizingRewriter optimizingRewriter;
     private final TableStats tableStats;
     private final SelectStatementPlanner selectStatementPlanner;
     private final Visitor statementVisitor = new Visitor();
@@ -93,7 +91,6 @@ public class LogicalPlanner {
     private final RelationNormalizer relationNormalizer;
 
     public LogicalPlanner(Functions functions, TableStats tableStats) {
-        this.optimizingRewriter = new OptimizingRewriter(functions);
         this.tableStats = tableStats;
         this.functions = functions;
         this.relationNormalizer = new RelationNormalizer(functions);
@@ -155,10 +152,7 @@ public class LogicalPlanner {
                                         SubqueryPlanner subqueryPlanner,
                                         FetchMode fetchMode) {
         CoordinatorTxnCtx coordinatorTxnCtx = plannerContext.transactionContext();
-        QueriedRelation relation = optimizingRewriter.optimize(
-            (QueriedRelation) relationNormalizer.normalize(queriedRelation, coordinatorTxnCtx),
-            coordinatorTxnCtx
-        );
+        QueriedRelation relation = (QueriedRelation) relationNormalizer.normalize(queriedRelation, coordinatorTxnCtx);
         LogicalPlan logicalPlan = plan(relation, fetchMode, subqueryPlanner, true, functions, coordinatorTxnCtx)
             .build(tableStats, new HashSet<>(relation.outputs()));
 
@@ -211,7 +205,7 @@ public class LogicalPlanner {
                                         collectAndFilter(
                                             relation,
                                             splitPoints.toCollect(),
-                                            relation.where(),
+                                            WhereClause.MATCH_ALL,
                                             subqueryPlanner,
                                             fetchMode,
                                             functions,

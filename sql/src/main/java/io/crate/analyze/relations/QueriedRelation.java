@@ -26,7 +26,6 @@ import io.crate.analyze.AnalyzedStatementVisitor;
 import io.crate.analyze.HavingClause;
 import io.crate.analyze.OrderBy;
 import io.crate.analyze.QuerySpec;
-import io.crate.analyze.WhereClause;
 import io.crate.expression.symbol.Symbol;
 
 import javax.annotation.Nullable;
@@ -47,14 +46,6 @@ public interface QueriedRelation extends AnalyzedRelation, AnalyzedStatement {
      */
     default List<Symbol> outputs() {
         return querySpec().outputs();
-    }
-
-    /**
-     * @return WHERE clause of the relation.
-     *         This is {@link WhereClause#MATCH_ALL} if there was no WhereClause in the statement
-     */
-    default WhereClause where() {
-        return querySpec().where();
     }
 
     /**
@@ -103,7 +94,6 @@ public interface QueriedRelation extends AnalyzedRelation, AnalyzedStatement {
         for (Symbol output : outputs()) {
             consumer.accept(output);
         }
-        where().accept(consumer);
         for (Symbol groupKey : groupBy()) {
             consumer.accept(groupKey);
         }

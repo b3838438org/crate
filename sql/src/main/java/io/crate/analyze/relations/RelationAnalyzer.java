@@ -32,7 +32,6 @@ import io.crate.analyze.ParameterContext;
 import io.crate.analyze.QueriedSelectRelation;
 import io.crate.analyze.QueriedTable;
 import io.crate.analyze.QuerySpec;
-import io.crate.analyze.WhereClause;
 import io.crate.analyze.expressions.ExpressionAnalysisContext;
 import io.crate.analyze.expressions.ExpressionAnalyzer;
 import io.crate.analyze.expressions.SubqueryAnalyzer;
@@ -316,8 +315,6 @@ public class RelationAnalyzer extends DefaultTraversalVisitor<AnalyzedRelation, 
         }
 
         boolean isDistinct = node.getSelect().isDistinct();
-        Symbol querySymbol = expressionAnalyzer.generateQuerySymbol(node.getWhere(), expressionAnalysisContext);
-        WhereClause whereClause = new WhereClause(querySymbol);
         QuerySpec querySpec = new QuerySpec()
             .orderBy(analyzeOrderBy(
                 selectAnalysis,
@@ -334,7 +331,6 @@ public class RelationAnalyzer extends DefaultTraversalVisitor<AnalyzedRelation, 
             .limit(longSymbolOrNull(node.getLimit(), expressionAnalyzer, expressionAnalysisContext))
             .offset(longSymbolOrNull(node.getOffset(), expressionAnalyzer, expressionAnalysisContext))
             .outputs(selectAnalysis.outputSymbols())
-            .where(whereClause)
             .groupBy(groupBy)
             .hasAggregates(expressionAnalysisContext.hasAggregates());
 
@@ -366,7 +362,10 @@ public class RelationAnalyzer extends DefaultTraversalVisitor<AnalyzedRelation, 
             );
         }
         statementContext.endRelation();
-        return relation;
+
+        return node.getWhere()
+            .map(x -> (AnalyzedRelation) new Selection(relation, expressionAnalyzer.convert(x, expressionAnalysisContext)))
+            .orElse(relation);
     }
 
     @Nullable

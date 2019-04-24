@@ -23,15 +23,10 @@
 package io.crate.analyze;
 
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Sets;
 import io.crate.analyze.relations.AnalyzedRelation;
 import io.crate.analyze.relations.JoinPair;
-import io.crate.analyze.relations.JoinPairs;
 import io.crate.analyze.relations.QueriedRelation;
-import io.crate.analyze.relations.QuerySplitter;
 import io.crate.expression.eval.EvaluatingNormalizer;
-import io.crate.expression.operator.AndOperator;
-import io.crate.expression.symbol.Aggregations;
 import io.crate.expression.symbol.Field;
 import io.crate.expression.symbol.FieldReplacer;
 import io.crate.expression.symbol.Literal;
@@ -44,7 +39,6 @@ import javax.annotation.Nullable;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -84,31 +78,7 @@ public class Rewriter {
      * </pre>
      */
     public static void tryRewriteOuterToInnerJoin(EvaluatingNormalizer normalizer, MultiSourceSelect mss) {
-        if (mss.sources().size() > 2) {
-            return;
-        }
-        WhereClause where = mss.where();
-        if (!where.hasQuery()) {
-            return;
-        }
-        Iterator<Map.Entry<QualifiedName, AnalyzedRelation>> it = mss.sources().entrySet().iterator();
-        Map.Entry<QualifiedName, AnalyzedRelation> left = it.next();
-        Map.Entry<QualifiedName, AnalyzedRelation> right = it.next();
-        QualifiedName leftName = left.getKey();
-        QualifiedName rightName = right.getKey();
-        JoinPair joinPair = JoinPairs.fuzzyFindPair(mss.joinPairs(), leftName, rightName);
-        if (joinPair == null) {
-            return;
-        }
-        assert leftName.equals(joinPair.left()) : "This JoinPair has a different left Qualified name: " + joinPair.left();
-        assert rightName.equals(joinPair.right()) : "This JoinPair has a different left Qualified name: " + joinPair.right();
-
-        JoinType joinType = joinPair.joinType();
-        // SEMI JOINS *can* be re-written to inner join if the RHS results are unique - but we don't optimize this yet
-        if (!joinType.isOuter() || joinType == JoinType.SEMI || joinType == JoinType.ANTI) {
-            return;
-        }
-        tryRewrite(normalizer, mss, where, left, right, joinPair, joinType);
+        return;
     }
 
     private static void tryRewrite(EvaluatingNormalizer normalizer,
@@ -118,26 +88,6 @@ public class Rewriter {
                                    Map.Entry<QualifiedName, AnalyzedRelation> right,
                                    JoinPair joinPair,
                                    JoinType joinType) {
-        final Map<QualifiedName, QueriedRelation> outerRelations = groupOuterRelationQSByName(left, right, joinType);
-        Map<Set<QualifiedName>, Symbol> splitQueries = QuerySplitter.split(where.query());
-        for (QualifiedName outerRelation : outerRelations.keySet()) {
-            Symbol outerRelationQuery = splitQueries.remove(Sets.newHashSet(outerRelation));
-            if (outerRelationQuery == null) {
-                continue;
-            }
-            if (couldMatchWithNullValues(normalizer, outerRelationQuery, outerRelation)) {
-                splitQueries.put(Sets.newHashSet(outerRelation), outerRelationQuery);
-            } else {
-                QueriedRelation outerSubRelation = outerRelations.get(outerRelation);
-                applyOuterJoinRewrite(
-                    joinPair,
-                    mss.querySpec(),
-                    outerSubRelation,
-                    splitQueries,
-                    outerRelationQuery
-                );
-            }
-        }
     }
 
     private static boolean couldMatchWithNullValues(EvaluatingNormalizer normalizer, Symbol query, QualifiedName relationName) {
@@ -174,51 +124,6 @@ public class Rewriter {
         }
     }
 
-    private static void applyOuterJoinRewrite(JoinPair joinPair,
-                                              QuerySpec multiSourceQuerySpec,
-                                              QueriedRelation outerSubRelation,
-                                              Map<Set<QualifiedName>, Symbol> splitQueries,
-                                              Symbol outerRelationQuery) {
-        CollectFieldsToRemoveFromOutputs collectFieldsToRemoveFromOutputs =
-            new CollectFieldsToRemoveFromOutputs(outerSubRelation, multiSourceQuerySpec.outputs(), joinPair.condition());
-        QuerySpec qs = outerSubRelation.querySpec();
-        Symbol query = FieldReplacer.replaceFields(outerRelationQuery, collectFieldsToRemoveFromOutputs);
-
-        applyAsWhereOrHaving(qs, query);
-
-        if (splitQueries.isEmpty()) { // All queries where successfully pushed down
-            joinPair.joinType(JoinType.INNER);
-            multiSourceQuerySpec.where(WhereClause.MATCH_ALL);
-        } else { // Query only for one relation was pushed down
-            if (joinPair.left().equals(outerSubRelation.getQualifiedName())) {
-                joinPair.joinType(JoinType.LEFT);
-            } else {
-                joinPair.joinType(JoinType.RIGHT);
-            }
-            multiSourceQuerySpec.where(new WhereClause(AndOperator.join(splitQueries.values())));
-        }
-        for (Field fieldToRemove : collectFieldsToRemoveFromOutputs.fieldsToNotCollect()) {
-            multiSourceQuerySpec.outputs().remove(fieldToRemove);
-            QueriedRelation relation = (QueriedRelation) fieldToRemove.relation();
-
-            int index = fieldToRemove.index();
-            relation.querySpec().outputs().remove(index);
-            relation.fields().remove(fieldToRemove);
-        }
-    }
-
-    private static void applyAsWhereOrHaving(QuerySpec qs, Symbol query) {
-        if (Aggregations.containsAggregation(query)) {
-            HavingClause having = qs.having();
-            if (having == null) {
-                qs.having(new HavingClause(query));
-            } else {
-                having.add(query);
-            }
-        } else {
-            qs.where(qs.where().add(query));
-        }
-    }
 
     /**
      * Collect fields which are being pushed down and otherwise not required.

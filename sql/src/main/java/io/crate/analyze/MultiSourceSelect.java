@@ -26,9 +26,7 @@ import io.crate.analyze.relations.AnalyzedRelationVisitor;
 import io.crate.analyze.relations.JoinPair;
 import io.crate.analyze.relations.QueriedRelation;
 import io.crate.analyze.relations.RelationNormalizer;
-import io.crate.analyze.relations.RelationSplitter;
 import io.crate.expression.symbol.Field;
-import io.crate.expression.symbol.FieldReplacer;
 import io.crate.expression.symbol.Symbol;
 import io.crate.metadata.CoordinatorTxnCtx;
 import io.crate.metadata.Functions;
@@ -39,12 +37,9 @@ import io.crate.sql.tree.QualifiedName;
 import javax.annotation.Nonnull;
 import java.util.Collection;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 public class MultiSourceSelect implements QueriedRelation {
 
@@ -74,52 +69,7 @@ public class MultiSourceSelect implements QueriedRelation {
                                                        CoordinatorTxnCtx coordinatorTxnCtx,
                                                        MultiSourceSelect mss,
                                                        QuerySpec querySpec) {
-        RelationSplitter splitter = new RelationSplitter(
-            querySpec,
-            mss.sources.values(),
-            mss.joinPairs
-        );
-        splitter.process();
-
-        Function<Field, Field> convertFieldToPointToNewRelations = Function.identity();
-        for (Map.Entry<QualifiedName, AnalyzedRelation> entry : mss.sources.entrySet()) {
-            AnalyzedRelation relation = entry.getValue();
-            QuerySpec spec = splitter.getSpec(relation);
-            QueriedRelation queriedRelation = Relations.applyQSToRelation(relationNormalizer, functions, coordinatorTxnCtx, relation, spec);
-            Function<Field, Field> convertField = f -> mapFieldToNewRelation(f, relation, queriedRelation);
-            querySpec = querySpec.copyAndReplace(FieldReplacer.bind(convertField));
-            entry.setValue(queriedRelation);
-
-            convertFieldToPointToNewRelations = convertFieldToPointToNewRelations.andThen(convertField);
-        }
-        Function<? super Symbol, ? extends Symbol> convertFieldInSymbolsToNewRelations =
-            FieldReplacer.bind(convertFieldToPointToNewRelations);
-
-        // remap the sources according to their QualifiedName which might have changed
-        Map<QualifiedName, AnalyzedRelation> newSources = new LinkedHashMap<>();
-        for (Map.Entry<QualifiedName, AnalyzedRelation> source : mss.sources.entrySet()) {
-            AnalyzedRelation analyzedRelation = source.getValue();
-            newSources.put(analyzedRelation.getQualifiedName(), analyzedRelation);
-        }
-
-        List<JoinPair> newJoinPairs = mss.joinPairs().stream().map(joinPair -> {
-            Map<QualifiedName, AnalyzedRelation> oldSources = mss.sources();
-            return JoinPair.of(
-                oldSources.get(joinPair.left()).getQualifiedName(),
-                oldSources.get(joinPair.right()).getQualifiedName(),
-                joinPair.joinType(),
-                convertFieldInSymbolsToNewRelations.apply(joinPair.condition())
-            );
-        }).collect(Collectors.toList());
-
-        return new MultiSourceSelect(
-            mss.isDistinct,
-            mss.qualifiedName,
-            newSources,
-            mss.fields(),
-            querySpec,
-            newJoinPairs
-        );
+        return mss;
     }
 
 

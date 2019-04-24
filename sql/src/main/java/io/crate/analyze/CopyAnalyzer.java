@@ -241,15 +241,7 @@ class CopyAnalyzer {
         }
 
         QuerySpec querySpec = new QuerySpec()
-            .outputs(outputs)
-            .where(createWhereClause(
-                node.whereClause(),
-                partitions,
-                normalizer,
-                expressionAnalyzer,
-                expressionAnalysisContext,
-                analysis.transactionContext())
-            );
+            .outputs(outputs);
         QueriedTable<DocTableRelation> subRelation = new QueriedTable<>(false, tableRelation, querySpec);
         return new CopyToAnalyzedStatement(
             subRelation, settings, uri, compressionType, outputFormat, outputNames, columnsDefined, overwrites);

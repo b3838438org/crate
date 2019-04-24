@@ -27,7 +27,6 @@ import io.crate.analyze.QueriedSelectRelation;
 import io.crate.analyze.QueriedTable;
 import io.crate.analyze.QuerySpec;
 import io.crate.analyze.Rewriter;
-import io.crate.analyze.where.WhereClauseValidator;
 import io.crate.expression.eval.EvaluatingNormalizer;
 import io.crate.expression.symbol.Field;
 import io.crate.expression.symbol.FieldReplacer;
@@ -106,14 +105,12 @@ public final class RelationNormalizer {
             EvaluatingNormalizer evalNormalizer = new EvaluatingNormalizer(
                 functions, RowGranularity.CLUSTER, null, tableRelation);
 
-            QueriedTable<? extends AbstractTableRelation<?>> table = new QueriedTable<>(
+            return new QueriedTable<>(
                 queriedTable.isDistinct(),
                 tableRelation,
                 transform(queriedTable.fields(), Field::path),
                 queriedTable.querySpec().copyAndReplace(s -> evalNormalizer.normalize(s, tnxCtx))
             );
-            WhereClauseValidator.validate(table.where().queryOrFallback());
-            return table;
         }
 
         @Override

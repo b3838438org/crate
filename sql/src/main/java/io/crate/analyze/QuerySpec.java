@@ -36,7 +36,6 @@ import static com.google.common.base.MoreObjects.firstNonNull;
 public class QuerySpec {
 
     private List<Symbol> outputs = Collections.emptyList();
-    private WhereClause where = WhereClause.MATCH_ALL;
     private List<Symbol> groupBy = Collections.emptyList();
     private HavingClause having = null;
     private OrderBy orderBy = null;
@@ -56,19 +55,6 @@ public class QuerySpec {
 
     public List<Symbol> groupBy() {
         return groupBy;
-    }
-
-    public WhereClause where() {
-        return where;
-    }
-
-    public QuerySpec where(@Nullable WhereClause where) {
-        if (where == null) {
-            this.where = WhereClause.MATCH_ALL;
-        } else {
-            this.where = where;
-        }
-        return this;
     }
 
     @Nullable
@@ -139,7 +125,6 @@ public class QuerySpec {
             .offset(offset)
             .hasAggregates(hasAggregates)
             .outputs(Lists2.map(outputs, replaceFunction));
-        newSpec.where(where.copyAndReplace(replaceFunction));
         if (orderBy != null) {
             newSpec.orderBy(orderBy.copyAndReplace(replaceFunction));
         }
@@ -159,7 +144,7 @@ public class QuerySpec {
     @Override
     public String toString() {
         return String.format(Locale.ENGLISH,
-            "QS{ SELECT %s WHERE %s GROUP BY %s HAVING %s ORDER BY %s LIMIT %s OFFSET %s}",
-            outputs, where, groupBy, having, orderBy, limit, offset);
+            "QS{ SELECT %s GROUP BY %s HAVING %s ORDER BY %s LIMIT %s OFFSET %s}",
+            outputs, groupBy, having, orderBy, limit, offset);
     }
 }
