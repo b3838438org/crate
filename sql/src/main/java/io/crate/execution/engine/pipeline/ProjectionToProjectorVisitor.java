@@ -28,6 +28,7 @@ import io.crate.analyze.SymbolEvaluator;
 import io.crate.breaker.RamAccountingContext;
 import io.crate.breaker.RowAccounting;
 import io.crate.breaker.RowAccountingWithEstimators;
+import io.crate.breaker.SizeEstimatorFactory;
 import io.crate.data.Bucket;
 import io.crate.data.Input;
 import io.crate.data.Projector;
@@ -240,15 +241,20 @@ public class ProjectionToProjectorVisitor
             orderByIndices[idx++] = i;
         }
 
-        List<DataType> dataTypes = Symbols.typeView(
-            projection.outputs().stream()
-                .filter(s -> s.symbolType() == SymbolType.INPUT_COLUMN ||
-                             s.symbolType() == SymbolType.LITERAL)
-                .collect(Collectors.toList())
-        );
+        List<? extends Symbol> standaloneOutputs = projection.outputs().stream()
+            .filter(s -> s.symbolType() == SymbolType.INPUT_COLUMN ||
+                         s.symbolType() == SymbolType.LITERAL)
+            .collect(Collectors.toList());
+        List<DataType> standaloneOutputsDataTypes = Symbols.typeView(standaloneOutputs);
 
-        int rowContainerOverhead = 32; // priority queues implementation are backed by an arrayList
-        RowAccounting rowAccounting = new RowAccountingWithEstimators(dataTypes, context.ramAccountingContext, rowContainerOverhead);
+        List<? extends Symbol> additionalSymbols = new ArrayList<>(projection.outputs());
+        additionalSymbols.removeAll(standaloneOutputs);
+        int rowMemoryOverhead = 32; // priority queues implementation are backed by an arrayList
+        // account for the functions in the outputs as overhead
+        for (Symbol additionalSymbol : additionalSymbols) {
+            rowMemoryOverhead += SizeEstimatorFactory.create(additionalSymbol.valueType()).estimateSize(null);
+        }
+        RowAccounting rowAccounting = new RowAccountingWithEstimators(standaloneOutputsDataTypes, context.ramAccountingContext, rowMemoryOverhead);
         if (projection.limit() > TopN.NO_LIMIT) {
             return new SortingTopNProjector(
                 rowAccounting,
