@@ -26,6 +26,8 @@ import com.google.common.collect.Iterables;
 import io.crate.analyze.NumberOfReplicas;
 import io.crate.analyze.SymbolEvaluator;
 import io.crate.breaker.RamAccountingContext;
+import io.crate.breaker.RowAccounting;
+import io.crate.breaker.RowAccountingWithEstimators;
 import io.crate.data.Bucket;
 import io.crate.data.Input;
 import io.crate.data.Projector;
@@ -82,6 +84,8 @@ import io.crate.expression.reference.StaticTableDefinition;
 import io.crate.expression.reference.sys.SysRowUpdater;
 import io.crate.expression.symbol.Literal;
 import io.crate.expression.symbol.Symbol;
+import io.crate.expression.symbol.SymbolType;
+import io.crate.expression.symbol.Symbols;
 import io.crate.metadata.ColumnIdent;
 import io.crate.metadata.Functions;
 import io.crate.metadata.Reference;
@@ -89,6 +93,7 @@ import io.crate.metadata.RelationName;
 import io.crate.metadata.RowGranularity;
 import io.crate.metadata.TransactionContext;
 import io.crate.planner.operators.SubQueryResults;
+import io.crate.types.DataType;
 import io.crate.types.DataTypes;
 import io.crate.types.StringType;
 import org.elasticsearch.Version;
@@ -113,6 +118,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 public class ProjectionToProjectorVisitor
     extends ProjectionVisitor<ProjectionToProjectorVisitor.Context, Projector> implements ProjectorFactory {
@@ -233,8 +239,19 @@ public class ProjectionToProjectorVisitor
         for (int i = numOutputs; i < inputs.size(); i++) {
             orderByIndices[idx++] = i;
         }
+
+        List<DataType> dataTypes = Symbols.typeView(
+            projection.outputs().stream()
+                .filter(s -> s.symbolType() == SymbolType.INPUT_COLUMN ||
+                             s.symbolType() == SymbolType.LITERAL)
+                .collect(Collectors.toList())
+        );
+
+        int rowContainerOverhead = 32; // priority queues implementation are backed by an arrayList
+        RowAccounting rowAccounting = new RowAccountingWithEstimators(dataTypes, context.ramAccountingContext, rowContainerOverhead);
         if (projection.limit() > TopN.NO_LIMIT) {
             return new SortingTopNProjector(
+                rowAccounting,
                 inputs,
                 ctx.expressions(),
                 numOutputs,

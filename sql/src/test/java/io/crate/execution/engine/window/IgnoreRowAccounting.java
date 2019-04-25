@@ -25,7 +25,7 @@ package io.crate.execution.engine.window;
 import io.crate.breaker.RowAccounting;
 import io.crate.data.Row;
 
-class IgnoreRowAccounting implements RowAccounting {
+public class IgnoreRowAccounting implements RowAccounting {
 
     @Override
     public void accountForAndMaybeBreak(Row row) {

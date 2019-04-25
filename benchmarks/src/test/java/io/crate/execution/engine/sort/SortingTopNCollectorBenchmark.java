@@ -32,6 +32,7 @@ import io.crate.data.Row;
 import io.crate.data.RowN;
 import io.crate.execution.engine.collect.CollectExpression;
 import io.crate.execution.engine.collect.InputCollectExpression;
+import io.crate.execution.engine.window.IgnoreRowAccounting;
 import io.crate.testing.RowGenerator;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -71,6 +72,7 @@ public class SortingTopNCollectorBenchmark {
     @Setup
     public void setUp() {
         boundedSortingCollector = new BoundedSortingTopNCollector(
+            new IgnoreRowAccounting(),
             INPUTS,
             COLLECT_EXPRESSIONS,
             1,
@@ -79,6 +81,7 @@ public class SortingTopNCollectorBenchmark {
             0);
 
         unboundedSortingCollector = new UnboundedSortingTopNCollector(
+            new IgnoreRowAccounting(),
             INPUTS,
             COLLECT_EXPRESSIONS,
             1,
