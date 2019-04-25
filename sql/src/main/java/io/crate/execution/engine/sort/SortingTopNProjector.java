@@ -22,6 +22,7 @@
 
 package io.crate.execution.engine.sort;
 
+import io.crate.breaker.RowAccounting;
 import io.crate.data.BatchIterator;
 import io.crate.data.Bucket;
 import io.crate.data.CollectingBatchIterator;
@@ -37,6 +38,7 @@ import java.util.stream.Collector;
 public class SortingTopNProjector implements Projector {
 
     private final Collector<Row, ?, Bucket> collector;
+    private final RowAccounting rowAccounting;
 
     /**
      * @param inputs                      contains output {@link Input}s and orderBy {@link Input}s
@@ -52,9 +54,11 @@ public class SortingTopNProjector implements Projector {
                                 Iterable<? extends CollectExpression<Row, ?>> collectExpressions,
                                 int numOutputs,
                                 Comparator<Object[]> ordering,
+                                RowAccounting rowAccounting,
                                 int limit,
                                 int offset,
                                 int unboundedCollectorThreshold) {
+        this.rowAccounting = rowAccounting;
         /**
          * We'll use an unbounded queue with the initial capacity of {@link unboundedCollectorThreshold}
          * if the maximum number of rows we have to accommodate in the queue in order to maintain correctness is

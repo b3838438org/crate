@@ -26,6 +26,7 @@ import com.google.common.collect.Iterables;
 import io.crate.analyze.NumberOfReplicas;
 import io.crate.analyze.SymbolEvaluator;
 import io.crate.breaker.RamAccountingContext;
+import io.crate.breaker.RowAccountingWithEstimators;
 import io.crate.data.Bucket;
 import io.crate.data.Input;
 import io.crate.data.Projector;
@@ -82,6 +83,7 @@ import io.crate.expression.reference.StaticTableDefinition;
 import io.crate.expression.reference.sys.SysRowUpdater;
 import io.crate.expression.symbol.Literal;
 import io.crate.expression.symbol.Symbol;
+import io.crate.expression.symbol.Symbols;
 import io.crate.metadata.ColumnIdent;
 import io.crate.metadata.Functions;
 import io.crate.metadata.Reference;
@@ -113,6 +115,8 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class ProjectionToProjectorVisitor
     extends ProjectionVisitor<ProjectionToProjectorVisitor.Context, Projector> implements ProjectorFactory {
@@ -223,8 +227,11 @@ public class ProjectionToProjectorVisitor
          * orderByIndices: [1]
          */
         InputFactory.Context<CollectExpression<Row, ?>> ctx = inputFactory.ctxForInputColumns(context.txnCtx);
-        ctx.add(projection.outputs());
-        ctx.add(projection.orderBy());
+        List<Symbol> outputAndOrderBySymbols = Stream
+            .concat(projection.outputs().stream(), projection.orderBy().stream())
+            .collect(Collectors.toList());
+
+        ctx.add(outputAndOrderBySymbols);
 
         int numOutputs = projection.outputs().size();
         List<Input<?>> inputs = ctx.topLevelInputs();
@@ -233,12 +240,18 @@ public class ProjectionToProjectorVisitor
         for (int i = numOutputs; i < inputs.size(); i++) {
             orderByIndices[idx++] = i;
         }
+
+        final int arrayListRowOverHead = 32; // priority queues implementation are backed by an arrayList
+        RowAccountingWithEstimators rowAccounting = new RowAccountingWithEstimators(
+            Symbols.typeView(outputAndOrderBySymbols), context.ramAccountingContext, arrayListRowOverHead);
+
         if (projection.limit() > TopN.NO_LIMIT) {
             return new SortingTopNProjector(
                 inputs,
                 ctx.expressions(),
                 numOutputs,
                 OrderingByPosition.arrayOrdering(orderByIndices, projection.reverseFlags(), projection.nullsFirst()),
+                rowAccounting,
                 projection.limit(),
                 projection.offset(),
                 UNBOUNDED_COLLECTOR_THRESHOLD
